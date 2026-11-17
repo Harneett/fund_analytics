@@ -78,7 +78,7 @@ SELECT TO_CHAR(d, 'YYYYMMDD')::int       AS date_key,
        (EXTRACT(ISODOW FROM d) <= 5)     AS is_weekday
 FROM generate_series(
         (SELECT MIN(trade_date) FROM staging.stg_prices),
-        (SELECT MAX(trade_date) FROM staging.stg_prices),
+        (SELECT MAX(trade_date) FROM staging.stg_prices WHERE adj_close IS NOT NULL),
         interval '1 day') AS d;
 ALTER TABLE analytics.dim_date ADD PRIMARY KEY (date_key);
 
