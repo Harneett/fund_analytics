@@ -1,0 +1,78 @@
+// 02_dax_measures.dax
+// Create an empty table called "_Measures" (Home > Enter Data) and add each
+// measure below to it. Table names assume you imported the analytics tables
+// as-is: dim_date, dim_security, dim_portfolio, fact_price,
+// fact_portfolio_holding, fact_portfolio_return.
+//
+// Model relationships (all one-to-many, single direction, from dim to fact):
+//   dim_date[date_key]            -> fact_price[date_key]
+//   dim_date[date_key]            -> fact_portfolio_return[date_key]
+//   dim_security[security_key]    -> fact_price[security_key]
+//   dim_security[security_key]    -> fact_portfolio_holding[security_key]
+//   dim_portfolio[portfolio_key]  -> fact_portfolio_return[portfolio_key]
+//   dim_portfolio[portfolio_key]  -> fact_portfolio_holding[portfolio_key]
+// Mark dim_date as the date table (using the [date] column).
+// Sort dim_date[month_name] by dim_date[month_number], and
+// dim_portfolio[portfolio_name] by dim_portfolio[risk_rank].
+
+// ---------- Portfolio performance ----------
+
+Daily Return =
+SUM ( fact_portfolio_return[daily_return] )
+
+// Running cumulative return from the start of the selected date range up to
+// the date on the axis. Use in a line chart by dim_date[date] with portfolio
+// as the legend. On a card it shows the return over the whole selected period.
+Cumulative Return =
+VAR _current = MAX ( dim_date[date] )
+RETURN
+    PRODUCTX (
+        FILTER ( ALLSELECTED ( dim_date[date] ), dim_date[date] <= _current ),
+        1 + CALCULATE ( SUM ( fact_portfolio_return[daily_return] ) )
+    ) - 1
+
+Days in Period =
+DATEDIFF ( MIN ( dim_date[date] ), MAX ( dim_date[date] ), DAY ) + 1
+
+Annualised Return =
+IF (
+    [Days in Period] > 0,
+    POWER ( 1 + [Cumulative Return], 365 / [Days in Period] ) - 1
+)
+
+Annualised Volatility =
+STDEV.S ( fact_portfolio_return[daily_return] ) * SQRT ( 252 )
+
+// Simple return-per-unit-of-risk (no risk-free rate, so not a true Sharpe ratio)
+Return per Unit of Risk =
+DIVIDE ( [Annualised Return], [Annualised Volatility] )
+
+// Measured from the portfolio's own running peak since the start of the data
+Max Drawdown =
+MIN ( fact_portfolio_return[drawdown] )
+
+// ---------- Holdings / allocation ----------
+
+Allocation % =
+SUM ( fact_portfolio_holding[weight] )
+
+// ---------- Security level ----------
+
+Security Return =
+VAR _first =
+    CALCULATE (
+        AVERAGE ( fact_price[adj_close] ),
+        FIRSTNONBLANK ( dim_date[date], CALCULATE ( COUNTROWS ( fact_price ) ) )
+    )
+VAR _last =
+    CALCULATE (
+        AVERAGE ( fact_price[adj_close] ),
+        LASTNONBLANK ( dim_date[date], CALCULATE ( COUNTROWS ( fact_price ) ) )
+    )
+RETURN
+    DIVIDE ( _last, _first ) - 1
+
+// ---------- Data quality page ----------
+// Import analytics.dq_log as a table too (no relationships needed).
+// Failed Checks =
+// CALCULATE ( COUNTROWS ( dq_log ), dq_log[status] = "REVIEW" )
